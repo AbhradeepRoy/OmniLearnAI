@@ -1,0 +1,14 @@
+{
+  "name": "OmniLearn AI",
+  "description": "Revolutionizing student learning with multi-format AI doubt solving, interactive virtual tutors, and automated educational video/presentation generation.",
+  "requestFramePermissions": [
+    "camera",
+    "microphone"
+  ],
+  "majorCapabilities": [
+    "Image Recognition",
+    "Natural Language Processing",
+    "Video Generation",
+    "Multilingual Support"
+  ]
+}
