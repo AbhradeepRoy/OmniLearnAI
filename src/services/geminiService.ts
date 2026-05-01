@@ -1,6 +1,14 @@
 import { GoogleGenAI, Type } from "@google/genai";
 
-const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+const apiKey = process.env.GEMINI_API_KEY || '';
+const ai = apiKey ? new GoogleGenAI({ apiKey }) : null;
+
+function getAI() {
+  if (!ai) {
+    throw new Error('GEMINI_API_KEY is not configured. Please add your API key to use AI features.');
+  }
+  return ai;
+}
 
 export async function analyzeDoubt(
   input: string | { mimeType: string; data: string },
@@ -22,7 +30,7 @@ Available formats: "text", "slides", "voice". NEVER suggest "video".`;
         ] 
       };
 
-  const response = await ai.models.generateContent({
+  const response = await getAI().models.generateContent({
     model,
     contents,
     config: {
@@ -47,7 +55,7 @@ Available formats: "text", "slides", "voice". NEVER suggest "video".`;
 
 export async function generateSlides(topic: string, level: string) {
   const model = "gemini-3-flash-preview";
-  const response = await ai.models.generateContent({
+  const response = await getAI().models.generateContent({
     model,
     contents: `Generate a 7-slide masterclass-level educational presentation about "${topic}" for a ${level} level student. 
     Each slide MUST be structured with:
@@ -99,7 +107,7 @@ export async function getChatResponse(messages: { role: string; content: string 
     parts: [{ text: m.content }]
   }));
 
-  const chat = ai.chats.create({
+  const chat = getAI().chats.create({
     model,
     config: { systemInstruction },
     history,
@@ -111,7 +119,7 @@ export async function getChatResponse(messages: { role: string; content: string 
 
 export async function translateText(text: string, targetLanguage: string) {
   const model = "gemini-3-flash-preview";
-  const response = await ai.models.generateContent({
+  const response = await getAI().models.generateContent({
     model,
     contents: `Translate the following text to ${targetLanguage}. Return ONLY the translated text without any preamble or quotes: \n\n${text}`
   });
@@ -120,7 +128,7 @@ export async function translateText(text: string, targetLanguage: string) {
 
 export async function generateQuiz(topic: string, level: string) {
   const model = "gemini-3-flash-preview";
-  const response = await ai.models.generateContent({
+  const response = await getAI().models.generateContent({
     model,
     contents: `Generate a 5-question multiple choice quiz about "${topic}" for a ${level} level student. 
     Each question should:
