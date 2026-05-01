@@ -1,6 +1,7 @@
+'use client';
+
 import { motion } from 'motion/react';
 import { BookOpen, Camera, MessageSquare, User, LayoutDashboard, Settings } from 'lucide-react';
-import React from 'react';
 
 interface NavbarProps {
   activeTab: string;

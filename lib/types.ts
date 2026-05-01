@@ -1,8 +1,3 @@
-/**
- * @license
- * SPDX-License-Identifier: Apache-2.0
- */
-
 export interface Message {
   id: string;
   role: 'user' | 'assistant' | 'system';
@@ -27,11 +22,27 @@ export interface Solution {
   id: string;
   doubtId: string;
   format: SolutionFormat;
-  content: any; // Can be markdown for text, slide data, or audio data
+  content: unknown;
 }
 
 export interface Slide {
   title: string;
   content: string[];
   summary: string;
+  imageSearchTerm?: string;
+}
+
+export interface AnalysisResult {
+  concept: string;
+  complexity: 'beginner' | 'intermediate' | 'advanced';
+  subject: string;
+  initialExplanation: string;
+  suggestedFormat: 'text' | 'slides' | 'voice';
+}
+
+export interface QuizQuestion {
+  question: string;
+  options: string[];
+  correctAnswer: number;
+  explanation: string;
 }

@@ -1,10 +1,12 @@
-import React, { useState, useRef } from 'react';
+'use client';
+
+import { useState, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { Camera, Upload, Type, Mic, X, Loader2, Sparkles, Send } from 'lucide-react';
-import { analyzeDoubt } from '../../services/geminiService';
+import { Camera, Upload, Type, Mic, X, Loader2, Sparkles } from 'lucide-react';
+import type { AnalysisResult } from '@/lib/types';
 
 interface ScannerProps {
-  onAnalyze: (result: any) => void;
+  onAnalyze: (result: AnalysisResult) => void;
 }
 
 export default function DoubtScanner({ onAnalyze }: ScannerProps) {
@@ -27,6 +29,7 @@ export default function DoubtScanner({ onAnalyze }: ScannerProps) {
   };
 
   const [isListening, setIsListening] = useState(false);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const recognitionRef = useRef<any>(null);
 
   const startListening = () => {
@@ -35,7 +38,10 @@ export default function DoubtScanner({ onAnalyze }: ScannerProps) {
       return;
     }
 
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+    if (!SpeechRecognition) return;
+    
     recognitionRef.current = new SpeechRecognition();
     recognitionRef.current.continuous = true;
     recognitionRef.current.interimResults = true;
@@ -44,6 +50,7 @@ export default function DoubtScanner({ onAnalyze }: ScannerProps) {
     recognitionRef.current.onend = () => setIsListening(false);
     recognitionRef.current.onerror = () => setIsListening(false);
 
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     recognitionRef.current.onresult = (event: any) => {
       let interimTranscript = '';
       let finalTranscript = '';
@@ -71,13 +78,15 @@ export default function DoubtScanner({ onAnalyze }: ScannerProps) {
     stopListening();
     setIsAnalyzing(true);
     try {
-      let result;
-      if (mode === 'image' && preview) {
-        const base64Data = preview.split(',')[1];
-        result = await analyzeDoubt({ mimeType: 'image/jpeg', data: base64Data });
-      } else {
-        result = await analyzeDoubt(input);
-      }
+      const response = await fetch('/api/analyze', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          input: mode === 'image' && preview ? 'Analyze this image' : input,
+          imageData: mode === 'image' && preview ? preview.split(',')[1] : null,
+        }),
+      });
+      const result = await response.json();
       onAnalyze(result);
     } catch (error) {
       console.error("Analysis failed", error);
@@ -206,7 +215,7 @@ export default function DoubtScanner({ onAnalyze }: ScannerProps) {
                     className="w-full h-32 p-6 mt-4 bg-slate-50 dark:bg-slate-900/50 dark:text-white rounded-2xl border border-slate-200 dark:border-slate-700 text-center text-lg outline-none focus:ring-2 focus:ring-emerald-200"
                   />
                   <p className="text-slate-500 dark:text-slate-400 mt-4 text-sm italic">
-                    {isListening ? "Try saying: 'Explain the photosynthesis process'" : "Your voice will be transcribed in real-time."}
+                    {isListening ? "Try saying: &apos;Explain the photosynthesis process&apos;" : "Your voice will be transcribed in real-time."}
                   </p>
                 </div>
               </div>

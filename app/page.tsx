@@ -1,22 +1,30 @@
-/**
- * @license
- * SPDX-License-Identifier: Apache-2.0
- */
+'use client';
 
-import React, { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import Navbar from './components/layout/Navbar';
-import DoubtScanner from './components/scanner/DoubtScanner';
-import SolutionRenderer from './components/workspace/SolutionRenderer';
-import { TUTORS } from './constants';
-import { Sparkles, BrainCircuit, Star, Clock, ArrowRight, BookOpen, Presentation, Video, MessageSquare, Send, Trophy, User, Settings, Flame, Loader2, Camera, X, Layers, Mic } from 'lucide-react';
-import { getChatResponse } from './services/geminiService';
+import Navbar from '@/components/layout/Navbar';
+import DoubtScanner from '@/components/scanner/DoubtScanner';
+import SolutionRenderer from '@/components/workspace/SolutionRenderer';
+import { TUTORS } from '@/lib/constants';
+import { Sparkles, BrainCircuit, Star, Clock, ArrowRight, BookOpen, Presentation, MessageSquare, Send, Trophy, User, Settings, Flame, Loader2, X, Layers, Mic } from 'lucide-react';
+import { useChat } from '@ai-sdk/react';
+import { DefaultChatTransport, type UIMessage } from 'ai';
+import type { AnalysisResult, Tutor } from '@/lib/types';
+
+function getUIMessageText(msg: UIMessage): string {
+  if (!msg.parts || !Array.isArray(msg.parts)) return '';
+  return msg.parts
+    .filter((p): p is { type: 'text'; text: string } => p.type === 'text')
+    .map((p) => p.text)
+    .join('');
+}
 
 export default function App() {
   const [activeTab, setActiveTab] = useState('dashboard');
-  const [activeAnalysis, setActiveAnalysis] = useState<any>(null);
+  const [activeAnalysis, setActiveAnalysis] = useState<AnalysisResult | null>(null);
   const [isDarkMode, setIsDarkMode] = useState(false);
   const [isListeningChat, setIsListeningChat] = useState(false);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const chatRecognitionRef = useRef<any>(null);
 
   const startChatListening = () => {
@@ -25,7 +33,10 @@ export default function App() {
       return;
     }
 
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+    if (!SpeechRecognition) return;
+    
     chatRecognitionRef.current = new SpeechRecognition();
     chatRecognitionRef.current.continuous = false;
     chatRecognitionRef.current.interimResults = true;
@@ -34,6 +45,7 @@ export default function App() {
     chatRecognitionRef.current.onend = () => setIsListeningChat(false);
     chatRecognitionRef.current.onerror = () => setIsListeningChat(false);
 
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     chatRecognitionRef.current.onresult = (event: any) => {
       let transcript = '';
       for (let i = event.resultIndex; i < event.results.length; ++i) {
@@ -47,22 +59,38 @@ export default function App() {
 
   const [studentName, setStudentName] = useState('Alex Johnson');
   const [isEditingName, setIsEditingName] = useState(false);
-  const [selectedTutor, setSelectedTutor] = useState<any>(null);
+  const [selectedTutor, setSelectedTutor] = useState<Tutor | null>(null);
   const [chatInput, setChatInput] = useState("");
-  const [chatMessages, setChatMessages] = useState<any[]>([
-    { id: '1', role: 'assistant', content: "Hey there! I'm OmniBuddy. Need some motivation or have a quick question? I'm here to help you study better! 🚀" }
-  ]);
 
-  const [isChatLoading, setIsChatLoading] = useState(false);
   const [showProfileEditor, setShowProfileEditor] = useState(false);
-  const [achievements, setAchievements] = useState<any[]>([
+  const [achievements, setAchievements] = useState<{ id: string; title: string; icon: typeof Trophy; color: string; bg: string; fill?: boolean }[]>([
     { id: '1', title: '7 Day Streak', icon: Flame, color: 'text-amber-600', bg: 'bg-amber-100', fill: true },
     { id: '2', title: 'Math Wizard', icon: Trophy, color: 'text-blue-600', bg: 'bg-blue-100' },
     { id: '3', title: 'Fast Learner', icon: Clock, color: 'text-emerald-600', bg: 'bg-emerald-100' },
   ]);
   const chatEndRef = useRef<HTMLDivElement>(null);
 
-  const handleAwardBadge = (badge: any) => {
+  const { messages, sendMessage, status, setMessages } = useChat({
+    transport: new DefaultChatTransport({ 
+      api: '/api/chat',
+      body: { tutor: selectedTutor }
+    }),
+  });
+
+  const isChatLoading = status === 'streaming' || status === 'submitted';
+
+  useEffect(() => {
+    if (messages.length === 0) {
+      setMessages([{
+        id: '1',
+        role: 'assistant',
+        parts: [{ type: 'text', text: "Hey there! I'm OmniBuddy. Need some motivation or have a quick question? I'm here to help you study better!" }],
+        createdAt: new Date(),
+      }]);
+    }
+  }, [messages.length, setMessages]);
+
+  const handleAwardBadge = (badge: { id: string; title: string; icon: typeof Trophy; color: string; bg: string; fill?: boolean }) => {
     if (!achievements.find(a => a.id === badge.id || a.title === badge.title)) {
       setAchievements(prev => [badge, ...prev]);
     }
@@ -72,33 +100,20 @@ export default function App() {
 
   useEffect(() => {
     chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [chatMessages]);
+  }, [messages]);
 
   const handleSendMessage = async () => {
     if (!chatInput.trim() || isChatLoading) return;
-    
-    const userMessage = { id: Date.now().toString(), role: 'user', content: chatInput };
-    setChatMessages(prev => [...prev, userMessage]);
+    const msg = chatInput;
     setChatInput("");
-    setIsChatLoading(true);
-
-    try {
-      const responseText = await getChatResponse([...chatMessages, userMessage], selectedTutor);
-      const assistantMessage = { id: (Date.now() + 1).toString(), role: 'assistant', content: responseText };
-      setChatMessages(prev => [...prev, assistantMessage]);
-    } catch (error) {
-      console.error("Chat error:", error);
-      setChatMessages(prev => [...prev, { id: Date.now().toString(), role: 'assistant', content: "I'm having a bit of trouble connecting right now. Could you please try again?" }]);
-    } finally {
-      setIsChatLoading(false);
-    }
+    sendMessage({ text: msg }, { body: { tutor: selectedTutor } });
   };
 
-  const handleAnalyze = (result: any) => {
+  const handleAnalyze = (result: AnalysisResult) => {
     setActiveAnalysis(result);
   };
 
-  const startTutorSession = (tutor: any) => {
+  const startTutorSession = (tutor: Tutor) => {
     setSelectedTutor(tutor);
     setActiveTab('chat');
   };
@@ -154,16 +169,16 @@ export default function App() {
                   </button>
                 </div>
 
-                      <div className="space-y-6 text-center">
-                        <div>
-                          <label className="block text-xs font-bold text-slate-400 uppercase tracking-widest mb-2">Display Name</label>
-                          <input 
-                            type="text"
-                            value={studentName}
-                            onChange={(e) => setStudentName(e.target.value)}
-                            className="w-full px-4 py-3 bg-slate-100 dark:bg-slate-800 rounded-xl border-none outline-none focus:ring-2 focus:ring-brand-500 dark:text-white"
-                          />
-                        </div>
+                <div className="space-y-6 text-center">
+                  <div>
+                    <label className="block text-xs font-bold text-slate-400 uppercase tracking-widest mb-2">Display Name</label>
+                    <input 
+                      type="text"
+                      value={studentName}
+                      onChange={(e) => setStudentName(e.target.value)}
+                      className="w-full px-4 py-3 bg-slate-100 dark:bg-slate-800 rounded-xl border-none outline-none focus:ring-2 focus:ring-brand-500 dark:text-white"
+                    />
+                  </div>
 
                   <div>
                     <label className="block text-xs font-bold text-slate-400 uppercase tracking-widest mb-2">Academic Goal</label>
@@ -221,7 +236,7 @@ export default function App() {
                   <div className="bg-brand-600 rounded-[40px] p-10 text-white relative overflow-hidden shadow-2xl shadow-brand-200">
                     <div className="absolute top-0 right-0 w-64 h-64 bg-white/10 rounded-full -translate-y-1/2 translate-x-1/2 blur-3xl" />
                     <div className="relative z-10 max-w-md">
-                      <h2 className="text-3xl font-bold mb-4 leading-tight text-white">Stuck on a problem?<br />OmniLearn is here.</h2>
+                      <h2 className="text-3xl font-bold mb-4 leading-tight text-white">{"Stuck on a problem?"}<br />OmniLearn is here.</h2>
                       <p className="text-brand-100 text-lg mb-8 opacity-90 leading-relaxed uppercase tracking-tighter">
                         Get instant presentation or text solutions for any subject. Just click the scanner below.
                       </p>
@@ -245,9 +260,9 @@ export default function App() {
                     </div>
                     <div className="space-y-4">
                       {[
-                        { title: 'Photosynthesis Deep Dive', concept: 'Photosynthesis', subject: 'Biology', complexity: 'intermediate', icon: Presentation, color: 'text-emerald-600', bg: 'bg-emerald-50' },
-                        { title: 'Quadratic Equations Guide', concept: 'Quadratic Equations', subject: 'Mathematics', complexity: 'intermediate', icon: Layers, color: 'text-blue-600', bg: 'bg-blue-50' },
-                        { title: 'Shakespearean Literary Devices', concept: 'Shakespearean Literary Devices', subject: 'English Literature', complexity: 'advanced', icon: BookOpen, color: 'text-purple-600', bg: 'bg-purple-50' },
+                        { title: 'Photosynthesis Deep Dive', concept: 'Photosynthesis', subject: 'Biology', complexity: 'intermediate' as const, icon: Presentation, color: 'text-emerald-600', bg: 'bg-emerald-50' },
+                        { title: 'Quadratic Equations Guide', concept: 'Quadratic Equations', subject: 'Mathematics', complexity: 'intermediate' as const, icon: Layers, color: 'text-blue-600', bg: 'bg-blue-50' },
+                        { title: 'Shakespearean Literary Devices', concept: 'Shakespearean Literary Devices', subject: 'English Literature', complexity: 'advanced' as const, icon: BookOpen, color: 'text-purple-600', bg: 'bg-purple-50' },
                       ].map((item, i) => (
                         <div 
                           key={i} 
@@ -269,7 +284,7 @@ export default function App() {
                                 <Clock size={12} /> {i === 0 ? '2 hours ago' : i === 1 ? 'Yesterday' : '3 days ago'}
                               </p>
                            </div>
-                           <ChevronRight size={20} className="text-slate-300" />
+                           <ArrowRight size={20} className="text-slate-300" />
                         </div>
                       ))}
                     </div>
@@ -316,7 +331,7 @@ export default function App() {
                        </div>
                        <div>
                           <div className="text-2xl font-black">7 Day Streak!</div>
-                          <p className="text-slate-500 text-sm font-medium">Keep it up! You're in the top 5%.</p>
+                          <p className="text-slate-500 text-sm font-medium">{"Keep it up! You're in the top 5%."}</p>
                        </div>
                     </div>
                   </div>
@@ -345,7 +360,7 @@ export default function App() {
                 className="max-w-6xl mx-auto py-10"
              >
                 <div className="text-center mb-16">
-                   <h2 className="text-5xl font-black tracking-tight text-slate-900 mb-4">Meet Your Mentors</h2>
+                   <h2 className="text-5xl font-black tracking-tight text-slate-900 dark:text-white mb-4">Meet Your Mentors</h2>
                    <p className="text-xl text-slate-500">Pick an expert and start learning in real-time.</p>
                 </div>
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
@@ -366,7 +381,7 @@ export default function App() {
                           </div>
                        </div>
                        <div className="p-8">
-                          <p className="text-slate-500 leading-relaxed mb-8 italic">"{tutor.personality}"</p>
+                          <p className="text-slate-500 leading-relaxed mb-8 italic">{`"${tutor.personality}"`}</p>
                           <div className="flex flex-wrap gap-2 mb-10">
                              {tutor.description.split(',').map((tag, i) => (
                                <span key={i} className="px-3 py-1 bg-slate-100 rounded-lg text-[10px] font-bold text-slate-400 uppercase tracking-tighter">
@@ -378,7 +393,7 @@ export default function App() {
                              onClick={() => startTutorSession(tutor)}
                              className="w-full py-4 bg-brand-600 text-white rounded-2xl font-black shadow-lg shadow-brand-100 hover:bg-brand-700 transition-all flex items-center justify-center gap-2"
                           >
-                             Learn with {tutor.name.split(' ')[1]} <ChevronRight size={18} />
+                             Learn with {tutor.name.split(' ')[1]} <ArrowRight size={18} />
                           </button>
                        </div>
                     </motion.div>
@@ -421,7 +436,7 @@ export default function App() {
                    </div>
                    
                    <div className="flex-1 p-6 overflow-y-auto space-y-6 bg-slate-50 dark:bg-slate-900/10">
-                      {chatMessages.map((msg) => (
+                      {messages.map((msg) => (
                         <div key={msg.id} className={`flex items-start gap-3 ${msg.role === 'user' ? 'flex-row-reverse' : ''}`}>
                           <div className={`w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 mt-1 ${
                             msg.role === 'user' ? 'bg-brand-100 text-brand-600' : 'bg-indigo-100 text-indigo-600'
@@ -433,7 +448,7 @@ export default function App() {
                               ? 'bg-brand-600 text-white border-brand-500 rounded-tr-none' 
                               : 'bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 border-slate-100 dark:border-slate-700 rounded-tl-none'
                           }`}>
-                            <p className="text-sm md:text-base whitespace-pre-wrap">{msg.content}</p>
+                            <p className="text-sm md:text-base whitespace-pre-wrap">{getUIMessageText(msg)}</p>
                           </div>
                         </div>
                       ))}
@@ -505,7 +520,7 @@ export default function App() {
                           onClick={() => setIsEditingName(true)}
                           className="text-4xl font-black text-slate-800 dark:text-white mb-2 cursor-pointer hover:text-brand-600 transition-colors"
                         >
-                          {studentName} ✏️
+                          {studentName}
                         </h2>
                       )}
                       <p className="text-slate-400 font-bold tracking-widest uppercase mb-6">Master Science & Math</p>
@@ -571,23 +586,3 @@ export default function App() {
     </div>
   );
 }
-
-function ChevronRight({ size = 20, className = "" }) {
-  return (
-    <svg 
-      xmlns="http://www.w3.org/2000/svg" 
-      width={size} 
-      height={size} 
-      viewBox="0 0 24 24" 
-      fill="none" 
-      stroke="currentColor" 
-      strokeWidth="3" 
-      strokeLinecap="round" 
-      strokeLinejoin="round" 
-      className={className}
-    >
-      <path d="m9 18 6-6-6-6"/>
-    </svg>
-  );
-}
-
